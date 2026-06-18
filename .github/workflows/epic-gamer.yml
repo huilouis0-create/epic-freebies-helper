@@ -75,6 +75,26 @@ jobs:
           echo "🚀 启动定时领取任务（支持 Gemini/AiHubMix/GLM）..."
           xvfb-run --auto-servernum --server-num=1 --server-args='-screen 0, 1920x1080x24' uv run app/deploy.py
 
+      - name: PushPlus notification
+        if: always()
+        env:
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          RUN_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$PUSHPLUS_TOKEN" ]; then
+            echo "PUSHPLUS_TOKEN not set, skip notification"
+            exit 0
+          fi
+          TITLE="Epic免费游戏领取"
+          if [ "$RUN_STATUS" = "success" ]; then
+            CONTENT="✅ 本周Epic免费游戏领取成功！去Epic确认游戏是否入库吧~"
+          else
+            CONTENT="❌ 本周Epic免费游戏领取失败，请去GitHub Actions查看日志"
+          fi
+          curl -s -X POST "https://www.pushplus.plus/send" \
+            -H "Content-Type: application/json" \
+            -d "{\"token\":\"$PUSHPLUS_TOKEN\",\"title\":\"$TITLE\",\"content\":\"$CONTENT\"}"
+
       - name: Write success summary
         if: success()
         run: |
