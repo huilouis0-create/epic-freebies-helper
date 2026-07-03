@@ -1262,6 +1262,80 @@ class EpicGames:
         await self._capture_purchase_debug(page, "checkout_challenge_extended_probe", url)
         return True
 
+    async def _complete_visible_checkout(
+        self,
+        page: Page,
+        promotion: PromotionGame,
+        agent: AgentV | None = None,
+        cycles: int = 3,
+    ) -> bool:
+        url = promotion.url
+        agent = agent or AgentV(page=page, agent_config=settings)
+
+        for cycle in range(1, cycles + 1):
+            if await self._is_claimed_state(page, url):
+                logger.success(f"Final checkout retry found claimed state - {url=}")
+                return True
+
+            if await self._is_checkout_security_check_visible(page):
+                logger.warning(
+                    "Final checkout retry found a visible security check ({}/{}). {}",
+                    cycle,
+                    cycles,
+                    url,
+                )
+                if not await self._resolve_checkout_security_check(page, agent, url):
+                    return False
+
+                outcome = await self._observe_checkout_outcome(page, url, timeout_ms=20000)
+                logger.debug(
+                    f"Final checkout retry outcome after security check: {outcome} | {url=}"
+                )
+                if outcome == "claimed":
+                    logger.success(
+                        f"Final checkout retry confirmed claim after security check - {url=}"
+                    )
+                    return True
+
+            state, payload = await self._wait_for_purchase_state(page, url, timeout_ms=12000)
+            if state == "claimed":
+                logger.success(f"Final checkout retry confirmed claim state - {url=}")
+                return True
+
+            if state == "security":
+                continue
+
+            if state != "checkout" or payload is None:
+                logger.debug(
+                    "Final checkout retry did not find a ready checkout container ({}/{}). state={} | {}",
+                    cycle,
+                    cycles,
+                    state,
+                    url,
+                )
+                continue
+
+            _wpc, payment_btn = payload
+            logger.warning(
+                "Retrying visible checkout submission during final verification ({}/{}). {}",
+                cycle,
+                cycles,
+                url,
+            )
+            await self._submit_place_order(payment_btn, url)
+
+            if await self._is_checkout_security_check_visible(page):
+                if not await self._resolve_checkout_security_check(page, agent, url):
+                    return False
+
+            outcome = await self._observe_checkout_outcome(page, url, timeout_ms=25000)
+            logger.debug(f"Final checkout retry outcome after submit: {outcome} | {url=}")
+            if outcome == "claimed":
+                logger.success(f"Final checkout retry confirmed claim after submit - {url=}")
+                return True
+
+        return False
+
     async def _is_promotion_in_order_history(self, promotion: PromotionGame) -> bool:
         try:
             await self.page.goto(URL_ORDER_HISTORY, wait_until="domcontentloaded", timeout=15000)
@@ -1292,12 +1366,16 @@ class EpicGames:
 
     async def _finalize_unconfirmed_checkout(self, page: Page, promotion: PromotionGame) -> bool:
         url = promotion.url
+        agent = AgentV(page=page, agent_config=settings)
 
         await self._handle_device_not_supported_modal(page, url, timeout_ms=5000)
         if await self._is_claimed_state(page, url):
             logger.success(
                 f"🎉 Instant checkout confirmed claim state during final verification - {url=}"
             )
+            return True
+
+        if await self._complete_visible_checkout(page, promotion, agent=agent):
             return True
 
         if await self._is_promotion_in_order_history(promotion):
