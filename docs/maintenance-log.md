@@ -1359,3 +1359,22 @@
   - 保留每周四北京时间 23:20 的调度、现有账号/GLM Secrets 与 Fork 自定义 PushPlus 成败通知。
   - 放弃已被上游 promotion reconciliation 状态机替代的旧 `_complete_visible_checkout()` 自定义实现，避免两套 checkout 恢复逻辑并存。
   - 按仓库规则未执行测试；使用 hCaptcha 契约检查、Python 编译、workflow YAML 解析和 `git diff --check` 做静态验证。
+
+### 2026-08-23 根据真实 Actions 重跑修复 Epic 错误响应漏检和 GLM 慢响应
+
+- 现象：
+  - 同步上游后的 Actions run `32643631341` 已能识别登录按钮被 hCaptcha 替换，但五轮认证仍在约 32 分钟后失败。
+  - 失败截图明确显示 `Incorrect response. Please refresh the page.`；运行日志没有对应 Epic API 错误码，验证码偶尔返回 success 后仍等待登录结果直至超时。
+  - 同一轮 `glm-4.6v` 请求多次打满 50 秒读取时限，其中一次多选题连续两次超时。
+- 根因判断：
+  - Epic 新登录页会直接渲染错误提示，现有状态机只消费旧 `/id/api/login` 的 JSON `errorCode`，因而漏掉页面错误并空等 2–3 分钟。
+  - GitHub Actions 共享出口触发了高强度 hCaptcha 风控；GLM 视觉请求偶发超过 50 秒，旧预算不足以覆盖慢响应。
+- 改动文件：
+  - `app/services/epic_authorization_service.py`
+  - `.github/workflows/epic-gamer.yml`
+  - `docs/maintenance-log.md`
+- 处理结果：
+  - 登录状态机会识别可见的 Epic `Incorrect response` 提示并立即进入外层全新页面重试，不再把确定失败误判为登录结果超时。
+  - Actions 中 GLM 单次读取预算调整为 75 秒、hCaptcha 单轮执行预算调整为 180 秒，给慢视觉响应留出空间。
+  - 调度改为北京时间每周五 08:20，与周免刚刷新及高峰时段错开；仍保留手动触发和 PushPlus 通知。
+  - 按仓库规则不执行测试；使用 hCaptcha 契约检查、Python AST 解析、workflow YAML 解析和 `git diff --check` 做静态验证。

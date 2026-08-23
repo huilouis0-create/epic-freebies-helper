@@ -153,6 +153,15 @@ class EpicAuthorization:
             return await self.page.locator("body").inner_text(timeout=1000)
         return ""
 
+    async def _retryable_login_page_error(self) -> str | None:
+        if "/id/login" not in self.page.url.lower():
+            return None
+
+        body_text = (await self._page_body_text()).casefold()
+        if "incorrect response" in body_text and "refresh the page" in body_text:
+            return "incorrect_response"
+        return None
+
     async def _dismiss_mfa_setup_prompt(self, timeout_ms: int = 10000) -> bool:
         if not self._needs_mfa_setup_prompt():
             return True
@@ -455,6 +464,15 @@ class EpicAuthorization:
             return False
 
         while time.monotonic() < deadline:
+            if page_error := await self._retryable_login_page_error():
+                logger.warning(
+                    "Epic rejected the login challenge response; restarting with a fresh "
+                    "login page | error={} | current_url='{}'",
+                    page_error,
+                    self.page.url,
+                )
+                raise RuntimeError(f"epic_login_{page_error}")
+
             if not self._login_error_signal.empty():
                 result = await self._login_error_signal.get()
                 error_code = result.get("errorCode", "unknown_error")

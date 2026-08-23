@@ -3,9 +3,9 @@ name: Epic Awesome Gamer (Scheduled)
 on:
   workflow_dispatch: # 手动触发
   schedule:
-    # 每周四 UTC 15:20 运行一次（北京时间周四 23:20）
-    # 该时间点放在 Epic 周免刷新之后，避免过早触发。
-    - cron: '20 15 * * 4'
+    # 每周五 UTC 00:20 运行一次（北京时间周五 08:20）
+    # 与 Epic 周免刷新时间错开，降低共享 Actions 出口触发风控的概率。
+    - cron: '20 0 * * 5'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -73,6 +73,8 @@ jobs:
           GLM_API_KEY: ${{ secrets.GLM_API_KEY }}
           GLM_BASE_URL: ${{ secrets.GLM_BASE_URL }}
           GLM_MODEL: ${{ vars.GLM_MODEL || secrets.GLM_MODEL }}
+          GLM_REQUEST_TIMEOUT_SECONDS: ${{ vars.GLM_REQUEST_TIMEOUT_SECONDS || '75' }}
+          EXECUTION_TIMEOUT: ${{ vars.EXECUTION_TIMEOUT || '180' }}
           CHALLENGE_CLASSIFIER_MODEL: ${{ vars.CHALLENGE_CLASSIFIER_MODEL || secrets.CHALLENGE_CLASSIFIER_MODEL }}
           IMAGE_CLASSIFIER_MODEL: ${{ vars.IMAGE_CLASSIFIER_MODEL || secrets.IMAGE_CLASSIFIER_MODEL }}
           SPATIAL_POINT_REASONER_MODEL: ${{ vars.SPATIAL_POINT_REASONER_MODEL || secrets.SPATIAL_POINT_REASONER_MODEL }}
